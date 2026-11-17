@@ -15,7 +15,13 @@
   let activeSidebarTab = 'thumbnails';
   let isSearchOpen = false;
   let tileRequestDebounce = null;
-  let lastTileRequestKeys = new Set();
+
+  // Cache & in-flight tracking
+  const pageLoadedScale = new Map(); // pageNum -> scale
+  const pageInFlight = new Set();    // pageNum
+  const textLoaded = new Set();       // pageNum
+  const thumbnailsLoaded = new Set(); // pageNum
+  const thumbnailsInFlight = new Set(); // pageNum
 
   // DOM Elements
   const toolbar = document.getElementById('toolbar');
@@ -110,6 +116,10 @@
       });
     });
 
+    thumbnailsContent.addEventListener('scroll', () => {
+      requestVisibleThumbnails();
+    });
+
     // Search
     searchToggleBtn.addEventListener('click', () => toggleSearchBar());
     searchCloseBtn.addEventListener('click', () => closeSearchBar());
@@ -135,7 +145,6 @@
 
     // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {
-      // Don't intercept if user is typing in an input
       if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
         return;
       }
@@ -156,9 +165,17 @@
         rotation = (rotation + 90) % 360;
         updateRotation();
       } else if (e.key === 'j' || e.key === 'ArrowDown') {
-        viewerContainer.scrollTop += 60;
+        if (viewMode === 'single') {
+          goToPage(currentPage + 1);
+        } else {
+          viewerContainer.scrollTop += 60;
+        }
       } else if (e.key === 'k' || e.key === 'ArrowUp') {
-        viewerContainer.scrollTop -= 60;
+        if (viewMode === 'single') {
+          goToPage(currentPage - 1);
+        } else {
+          viewerContainer.scrollTop -= 60;
+        }
       } else if (e.key === 'PageDown') {
         goToPage(currentPage + 1);
       } else if (e.key === 'PageUp') {
@@ -178,6 +195,9 @@
         break;
       case 'tileReady':
         handleTileReady(message);
+        break;
+      case 'thumbnailReady':
+        handleThumbnailReady(message);
         break;
       case 'textReady':
         handleTextReady(message);
@@ -209,7 +229,7 @@
 
     buildPagePlaceholders();
     updateZoom();
-    requestVisiblePages();
+    requestVisiblePages(true);
     loadThumbnails();
 
     if (data.outline) {
@@ -234,13 +254,16 @@
       loadThumbnails();
     }
 
-    // Refresh visible pages and tiles while preserving exact scroll position
     updateZoom();
     requestVisiblePages(true);
   }
 
   function buildPagePlaceholders() {
     documentFlow.innerHTML = '';
+    pageLoadedScale.clear();
+    pageInFlight.clear();
+    textLoaded.clear();
+
     for (let i = 1; i <= pageCount; i++) {
       const dim = dimensions[i - 1] || { width: 595, height: 842 };
       const pageContainer = document.createElement('div');
@@ -249,6 +272,10 @@
       pageContainer.setAttribute('data-page', i);
       pageContainer.style.width = `${dim.width * currentScale}px`;
       pageContainer.style.height = `${dim.height * currentScale}px`;
+
+      if (viewMode === 'single') {
+        pageContainer.style.display = i === currentPage ? 'block' : 'none';
+      }
 
       const viewport = document.createElement('div');
       viewport.className = 'page-viewport';
@@ -316,7 +343,6 @@
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
 
-    // Convert client coords back to unscaled PDF points
     const ptX = clickX / currentScale;
     const ptY = clickY / currentScale;
 
@@ -343,7 +369,6 @@
 
     synctexLayer.appendChild(ring);
 
-    // Scroll ring into center
     setTimeout(() => {
       const containerRect = viewerContainer.getBoundingClientRect();
       const ringRect = ring.getBoundingClientRect();
@@ -354,6 +379,9 @@
 
   function handlePageReady(msg) {
     const pageNum = msg.pageIndex + 1;
+    pageInFlight.delete(pageNum);
+    pageLoadedScale.set(pageNum, msg.scale);
+
     const img = document.getElementById(`img-${pageNum}`);
     const skeleton = document.getElementById(`skeleton-${pageNum}`);
     if (img) {
@@ -362,9 +390,25 @@
       if (skeleton) skeleton.style.display = 'none';
     }
 
-    // Request text and links for selectable overlay
-    vscode.postMessage({ type: 'getText', pageIndex: msg.pageIndex });
-    vscode.postMessage({ type: 'getLinks', pageIndex: msg.pageIndex });
+    if (!textLoaded.has(pageNum)) {
+      textLoaded.add(pageNum);
+      vscode.postMessage({ type: 'getText', pageIndex: msg.pageIndex });
+      vscode.postMessage({ type: 'getLinks', pageIndex: msg.pageIndex });
+    }
+  }
+
+  function handleThumbnailReady(msg) {
+    const pageNum = msg.pageIndex + 1;
+    thumbnailsInFlight.delete(pageNum);
+    thumbnailsLoaded.add(pageNum);
+
+    const img = document.getElementById(`thumb-img-${pageNum}`);
+    if (img) {
+      img.src = msg.dataUrl;
+      img.style.display = 'block';
+      const skeleton = document.getElementById(`thumb-skeleton-${pageNum}`);
+      if (skeleton) skeleton.style.display = 'none';
+    }
   }
 
   function handleTileReady(msg) {
@@ -372,7 +416,6 @@
     const tileLayer = document.getElementById(`tile-layer-${pageNum}`);
     if (!tileLayer) return;
 
-    // Only apply if still zoomed in to high scale
     if (currentScale < 2.5) return;
 
     const tile = msg.tile;
@@ -384,7 +427,6 @@
     img.style.width = `${tile.width * currentScale}px`;
     img.style.height = `${tile.height * currentScale}px`;
 
-    // Remove older tiles to save memory
     while (tileLayer.children.length > 2) {
       tileLayer.removeChild(tileLayer.firstChild);
     }
@@ -500,6 +542,8 @@
         }
 
         row.addEventListener('click', () => {
+          document.querySelectorAll('.outline-node').forEach((n) => n.classList.remove('active'));
+          row.classList.add('active');
           if (typeof node.page === 'number') {
             goToPage(node.page + 1);
           } else if (node.uri) {
@@ -532,18 +576,41 @@
 
   function loadThumbnails() {
     thumbnailsContent.innerHTML = '';
+    thumbnailsLoaded.clear();
+    thumbnailsInFlight.clear();
+
     for (let i = 1; i <= pageCount; i++) {
+      const dim = dimensions[i - 1] || { width: 595, height: 842 };
       const item = document.createElement('div');
       item.className = `thumbnail-item ${i === currentPage ? 'active' : ''}`;
       item.id = `thumb-${i}`;
 
       const wrapper = document.createElement('div');
       wrapper.className = 'thumbnail-wrapper';
+      const thumbW = 120;
+      const thumbH = Math.round(thumbW * (dim.height / dim.width));
+      wrapper.style.width = `${thumbW}px`;
+      wrapper.style.height = `${thumbH}px`;
+
+      const skeleton = document.createElement('div');
+      skeleton.className = 'thumbnail-skeleton';
+      skeleton.id = `thumb-skeleton-${i}`;
+      skeleton.style.width = '100%';
+      skeleton.style.height = '100%';
+      skeleton.style.background = '#2c2c2c';
+      skeleton.style.display = 'flex';
+      skeleton.style.alignItems = 'center';
+      skeleton.style.justifyContent = 'center';
+      skeleton.style.fontSize = '11px';
+      skeleton.style.color = '#777';
+      skeleton.textContent = `${i}`;
+      wrapper.appendChild(skeleton);
 
       const img = document.createElement('img');
       img.className = 'thumbnail-img';
       img.id = `thumb-img-${i}`;
       img.alt = `Thumbnail ${i}`;
+      img.style.display = 'none';
 
       wrapper.appendChild(img);
       item.appendChild(wrapper);
@@ -557,18 +624,27 @@
       thumbnailsContent.appendChild(item);
     }
 
-    // Lazy load thumbnails with IntersectionObserver
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          const page = parseInt(entry.target.getAttribute('id').replace('thumb-', ''), 10);
-          requestThumbnail(page);
-          observer.unobserve(entry.target);
-        }
-      });
-    }, { root: thumbnailsContent, rootMargin: '100px' });
+    requestVisibleThumbnails();
+  }
 
-    document.querySelectorAll('.thumbnail-item').forEach((item) => observer.observe(item));
+  function requestVisibleThumbnails() {
+    if (sidebar.classList.contains('collapsed')) return;
+    if (activeSidebarTab !== 'thumbnails') return;
+
+    const containerRect = thumbnailsContent.getBoundingClientRect();
+    if (containerRect.height === 0) return;
+
+    for (let i = 1; i <= pageCount; i++) {
+      const item = document.getElementById(`thumb-${i}`);
+      if (!item) continue;
+      const rect = item.getBoundingClientRect();
+      if (rect.bottom >= containerRect.top - 200 && rect.top <= containerRect.bottom + 200) {
+        if (!thumbnailsLoaded.has(i) && !thumbnailsInFlight.has(i)) {
+          thumbnailsInFlight.add(i);
+          requestThumbnail(i);
+        }
+      }
+    }
   }
 
   function requestThumbnail(pageNum) {
@@ -611,8 +687,17 @@
 
   function calculateAutoZoom() {
     const dim = dimensions[currentPage - 1] || dimensions[0] || { width: 595, height: 842 };
-    const viewportWidth = viewerContainer.clientWidth - 40;
-    const viewportHeight = viewerContainer.clientHeight - 40;
+    const viewportWidth = viewerContainer.clientWidth - 48;
+    const viewportHeight = viewerContainer.clientHeight - 48;
+
+    if (viewportWidth < 150) {
+      requestAnimationFrame(() => {
+        if (viewerContainer.clientWidth > 150) {
+          calculateAutoZoom();
+        }
+      });
+      return;
+    }
 
     let targetScale = 1.0;
     if (zoomMode === 'fit-width') {
@@ -620,7 +705,6 @@
     } else if (zoomMode === 'fit-page') {
       targetScale = Math.min(viewportWidth / dim.width, viewportHeight / dim.height);
     } else {
-      // auto
       targetScale = Math.min(viewportWidth / dim.width, 1.5);
     }
 
@@ -632,7 +716,6 @@
     const prevScale = currentScale;
     currentScale = Math.max(0.25, Math.min(16.0, newScale));
 
-    // Update zoom dropdown text
     const pct = Math.round(currentScale * 100);
     const existingOpt = Array.from(zoomSelect.options).find((o) => o.value === `${currentScale}`);
     if (existingOpt) {
@@ -649,7 +732,6 @@
       zoomSelect.value = 'custom';
     }
 
-    // Adjust scroll to keep focal point invariant
     if (focalX !== undefined && focalY !== undefined) {
       const containerRect = viewerContainer.getBoundingClientRect();
       const mouseX = focalX - containerRect.left + viewerContainer.scrollLeft;
@@ -658,7 +740,6 @@
       viewerContainer.scrollLeft = mouseX * ratio - (focalX - containerRect.left);
       viewerContainer.scrollTop = mouseY * ratio - (focalY - containerRect.top);
     } else {
-      // Zoom centered on viewport center
       const centerX = viewerContainer.clientWidth / 2 + viewerContainer.scrollLeft;
       const centerY = viewerContainer.clientHeight / 2 + viewerContainer.scrollTop;
       const ratio = currentScale / prevScale;
@@ -667,7 +748,7 @@
     }
 
     updateContainerDimensions();
-    requestVisiblePages();
+    requestVisiblePages(true);
   }
 
   function updateContainerDimensions() {
@@ -678,7 +759,6 @@
         el.style.width = `${dim.width * currentScale}px`;
         el.style.height = `${dim.height * currentScale}px`;
       }
-      // If scale < 2.5, clear any high-res tile layer
       if (currentScale < 2.5) {
         const tileLayer = document.getElementById(`tile-layer-${i}`);
         if (tileLayer) tileLayer.innerHTML = '';
@@ -700,6 +780,7 @@
     } else {
       requestVisiblePages();
     }
+    requestVisibleThumbnails();
   }
 
   // --- Page Visibility & Seamless 1600% Tile Requesting ---
@@ -710,16 +791,16 @@
   }
 
   function detectCurrentPage() {
-    const containerTop = viewerContainer.scrollTop;
-    const containerHeight = viewerContainer.clientHeight;
-    const centerY = containerTop + containerHeight / 2;
+    if (viewMode === 'single') return;
+
+    const containerRect = viewerContainer.getBoundingClientRect();
+    const centerY = containerRect.top + containerRect.height / 3;
 
     for (let i = 1; i <= pageCount; i++) {
       const el = document.getElementById(`page-${i}`);
       if (!el) continue;
-      const top = el.offsetTop;
-      const bottom = top + el.offsetHeight;
-      if (centerY >= top && centerY <= bottom) {
+      const rect = el.getBoundingClientRect();
+      if (rect.top <= centerY && rect.bottom >= centerY) {
         if (currentPage !== i) {
           currentPage = i;
           pageInput.value = currentPage;
@@ -744,45 +825,66 @@
     currentPage = pageNum;
     pageInput.value = currentPage;
 
-    const el = document.getElementById(`page-${pageNum}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    updateActiveThumbnail(currentPage);
-  }
-
-  function requestVisiblePages(force = false) {
-    const containerRect = viewerContainer.getBoundingClientRect();
-    const visiblePages = [];
-
-    for (let i = 1; i <= pageCount; i++) {
-      const el = document.getElementById(`page-${i}`);
-      if (!el) continue;
-      const rect = el.getBoundingClientRect();
-
-      // Check if page intersects viewer viewport (with 100px vertical buffer)
-      if (rect.bottom >= containerRect.top - 100 && rect.top <= containerRect.bottom + 100) {
-        visiblePages.push(i);
+    if (viewMode === 'single') {
+      for (let i = 1; i <= pageCount; i++) {
+        const el = document.getElementById(`page-${i}`);
+        if (el) el.style.display = i === pageNum ? 'block' : 'none';
+      }
+      viewerContainer.scrollTop = 0;
+    } else {
+      const el = document.getElementById(`page-${pageNum}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     }
 
-    // Always ensure current page is rendered
-    if (!visiblePages.includes(currentPage) && currentPage >= 1 && currentPage <= pageCount) {
+    updateActiveThumbnail(currentPage);
+    requestVisiblePages();
+  }
+
+  function requestVisiblePages(force = false) {
+    if (force) {
+      pageLoadedScale.clear();
+      pageInFlight.clear();
+    }
+
+    const containerRect = viewerContainer.getBoundingClientRect();
+    const visiblePages = [];
+
+    if (viewMode === 'single') {
       visiblePages.push(currentPage);
+    } else {
+      for (let i = 1; i <= pageCount; i++) {
+        const el = document.getElementById(`page-${i}`);
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+
+        // Visible if within container viewport plus 250px vertical buffer
+        if (rect.bottom >= containerRect.top - 250 && rect.top <= containerRect.bottom + 250) {
+          visiblePages.push(i);
+        }
+      }
+
+      if (visiblePages.length === 0 && currentPage >= 1 && currentPage <= pageCount) {
+        visiblePages.push(currentPage);
+      }
     }
 
-    // Render base pages (scale capped at 2.5 for full page to keep memory small and fast)
     const baseRenderScale = Math.min(currentScale, 2.0);
+
     for (const pageNum of visiblePages) {
-      vscode.postMessage({
-        type: 'renderPage',
-        pageIndex: pageNum - 1,
-        scale: baseRenderScale,
-        force
-      });
+      const currentLoaded = pageLoadedScale.get(pageNum);
+      if ((currentLoaded !== baseRenderScale || force) && !pageInFlight.has(pageNum)) {
+        pageInFlight.add(pageNum);
+        vscode.postMessage({
+          type: 'renderPage',
+          pageIndex: pageNum - 1,
+          scale: baseRenderScale,
+          force
+        });
+      }
     }
 
-    // If zoomed in high (>= 2.5 up to 16.0), render seamless viewport tiles!
     if (currentScale >= 2.5) {
       debounceTileRequests(visiblePages, containerRect);
     }
@@ -801,7 +903,6 @@
         const dim = dimensions[pageNum - 1];
         if (!dim) continue;
 
-        // Calculate visible viewport rectangle within the page
         const visibleLeft = Math.max(0, containerRect.left - rect.left);
         const visibleTop = Math.max(0, containerRect.top - rect.top);
         const visibleRight = Math.min(rect.width, containerRect.right - rect.left);
@@ -809,7 +910,6 @@
 
         if (visibleRight <= visibleLeft || visibleBottom <= visibleTop) continue;
 
-        // Add 25% margin padding around viewport
         const marginX = (visibleRight - visibleLeft) * 0.25;
         const marginY = (visibleBottom - visibleTop) * 0.25;
 
@@ -818,7 +918,6 @@
         const tileRightPx = Math.min(rect.width, visibleRight + marginX);
         const tileBottomPx = Math.min(rect.height, visibleBottom + marginY);
 
-        // Convert to unscaled PDF points
         const tileX = tileLeftPx / currentScale;
         const tileY = tileTopPx / currentScale;
         const tileW = (tileRightPx - tileLeftPx) / currentScale;
@@ -853,18 +952,20 @@
   function updateViewMode() {
     viewModeBtn.classList.toggle('active', viewMode === 'single');
     if (viewMode === 'single') {
-      documentFlow.style.flexDirection = 'column';
       for (let i = 1; i <= pageCount; i++) {
         const el = document.getElementById(`page-${i}`);
         if (el) el.style.display = i === currentPage ? 'block' : 'none';
       }
+      viewerContainer.scrollTop = 0;
     } else {
-      documentFlow.style.flexDirection = 'column';
       for (let i = 1; i <= pageCount; i++) {
         const el = document.getElementById(`page-${i}`);
         if (el) el.style.display = 'block';
       }
+      const el = document.getElementById(`page-${currentPage}`);
+      if (el) el.scrollIntoView({ behavior: 'auto', block: 'start' });
     }
+    requestVisiblePages(true);
   }
 
   // --- Sidebar & Search ---
@@ -873,6 +974,9 @@
     isSidebarOpen = !isSidebarOpen;
     sidebar.classList.toggle('collapsed', !isSidebarOpen);
     sidebarToggle.classList.toggle('active', isSidebarOpen);
+    if (isSidebarOpen) {
+      requestVisibleThumbnails();
+    }
     setTimeout(() => handleResize(), 220);
   }
 
@@ -883,6 +987,9 @@
     });
     thumbnailsContent.style.display = tab === 'thumbnails' ? 'block' : 'none';
     outlineContent.style.display = tab === 'outline' ? 'block' : 'none';
+    if (tab === 'thumbnails') {
+      requestVisibleThumbnails();
+    }
   }
 
   function toggleSearchBar() {

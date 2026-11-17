@@ -346,11 +346,28 @@ export class PDFEngine {
       function convertItems(items: any[]): OutlineNode[] {
         const nodes: OutlineNode[] = [];
         for (const it of items) {
+          let pageNum: number | undefined = undefined;
+          if (typeof it.page === 'number') {
+            pageNum = it.page;
+          } else if (it.uri) {
+            try {
+              pageNum = loaded.doc.resolveLink(it.uri);
+            } catch {}
+          }
+
+          if (pageNum === undefined && typeof it.uri === 'string') {
+            const m = it.uri.match(/[#&]page=(\d+)/i);
+            if (m) {
+              pageNum = Math.max(0, parseInt(m[1], 10) - 1);
+            }
+          }
+
           const node: OutlineNode = {
             title: it.title || 'Untitled',
-            page: typeof it.page === 'number' ? it.page : undefined,
+            page: pageNum,
             uri: it.uri
           };
+
           if (it.down && Array.isArray(it.down) && it.down.length > 0) {
             node.children = convertItems(it.down);
           }
