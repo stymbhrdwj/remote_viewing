@@ -15,6 +15,7 @@
   let activeSidebarTab = 'thumbnails';
   let isSearchOpen = false;
   let tileRequestDebounce = null;
+  let currentRenderEpoch = 0;
 
   // Cache & in-flight tracking
   const pageLoadedScale = new Map(); // pageNum -> scale
@@ -79,7 +80,8 @@
     zoomInBtn.addEventListener('click', () => zoomStep(1));
     zoomOutBtn.addEventListener('click', () => zoomStep(-1));
 
-    // Mouse wheel zoom with Ctrl/Cmd
+    // Mouse wheel zoom with Ctrl/Cmd (debounced server requests for 60fps smooth zooming)
+    let wheelZoomDebounce = null;
     viewerContainer.addEventListener(
       'wheel',
       (e) => {
@@ -89,7 +91,13 @@
           const factor = delta > 0 ? 1.15 : 0.87;
           let newScale = currentScale * factor;
           newScale = Math.max(0.25, Math.min(16.0, newScale));
-          applyCustomScale(newScale, e.clientX, e.clientY);
+          // Apply instant visual scaling to DOM elements, deferring server requests until wheel pauses
+          applyCustomScale(newScale, e.clientX, e.clientY, false);
+
+          if (wheelZoomDebounce) clearTimeout(wheelZoomDebounce);
+          wheelZoomDebounce = setTimeout(() => {
+            requestVisiblePages(true);
+          }, 120);
         }
       },
       { passive: false }
@@ -378,6 +386,11 @@
   }
 
   function handlePageReady(msg) {
+    // Drop stale response from older obsolete zoom levels
+    if (msg.epoch !== undefined && msg.epoch !== currentRenderEpoch) {
+      return;
+    }
+
     const pageNum = msg.pageIndex + 1;
     pageInFlight.delete(pageNum);
     pageLoadedScale.set(pageNum, msg.scale);
@@ -385,9 +398,15 @@
     const img = document.getElementById(`img-${pageNum}`);
     const skeleton = document.getElementById(`skeleton-${pageNum}`);
     if (img) {
-      img.src = msg.dataUrl;
-      img.style.display = 'block';
-      if (skeleton) skeleton.style.display = 'none';
+      // Background decode to prevent white flicker during swap
+      const tempImg = new Image();
+      tempImg.onload = () => {
+        if (msg.epoch !== undefined && msg.epoch !== currentRenderEpoch) return;
+        img.src = msg.dataUrl;
+        img.style.display = 'block';
+        if (skeleton) skeleton.style.display = 'none';
+      };
+      tempImg.src = msg.dataUrl;
     }
 
     if (!textLoaded.has(pageNum)) {
@@ -412,11 +431,14 @@
   }
 
   function handleTileReady(msg) {
+    // Drop stale tiles
+    if (msg.epoch !== undefined && msg.epoch !== currentRenderEpoch) return;
+    if (currentScale < 2.5) return;
+    if (Math.abs(msg.scale - currentScale) > 0.05) return;
+
     const pageNum = msg.pageIndex + 1;
     const tileLayer = document.getElementById(`tile-layer-${pageNum}`);
     if (!tileLayer) return;
-
-    if (currentScale < 2.5) return;
 
     const tile = msg.tile;
     const img = document.createElement('img');
@@ -712,9 +734,10 @@
     applyCustomScale(targetScale);
   }
 
-  function applyCustomScale(newScale, focalX, focalY) {
+  function applyCustomScale(newScale, focalX, focalY, immediateRequest = true) {
     const prevScale = currentScale;
     currentScale = Math.max(0.25, Math.min(16.0, newScale));
+    currentRenderEpoch++; // Invalidate all older in-flight render requests immediately
 
     const pct = Math.round(currentScale * 100);
     const existingOpt = Array.from(zoomSelect.options).find((o) => o.value === `${currentScale}`);
@@ -748,7 +771,10 @@
     }
 
     updateContainerDimensions();
-    requestVisiblePages(true);
+
+    if (immediateRequest) {
+      requestVisiblePages(true);
+    }
   }
 
   function updateContainerDimensions() {
@@ -871,6 +897,7 @@
     }
 
     const baseRenderScale = Math.min(currentScale, 2.0);
+    const epoch = currentRenderEpoch;
 
     for (const pageNum of visiblePages) {
       const currentLoaded = pageLoadedScale.get(pageNum);
@@ -880,6 +907,7 @@
           type: 'renderPage',
           pageIndex: pageNum - 1,
           scale: baseRenderScale,
+          epoch: epoch,
           force
         });
       }
@@ -922,11 +950,13 @@
         const tileY = tileTopPx / currentScale;
         const tileW = (tileRightPx - tileLeftPx) / currentScale;
         const tileH = (tileBottomPx - tileTopPx) / currentScale;
+        const epoch = currentRenderEpoch;
 
         vscode.postMessage({
           type: 'renderTile',
           pageIndex: pageNum - 1,
           scale: currentScale,
+          epoch: epoch,
           tile: {
             x: tileX,
             y: tileY,

@@ -11,6 +11,10 @@ export class PDFEditorProvider implements vscode.CustomReadonlyEditorProvider {
   // Active panels map (uri string -> WebviewPanel)
   private static readonly activePanels = new Map<string, vscode.WebviewPanel>();
 
+  // Epoch tracking to preempt and discard obsolete render requests during rapid zooming
+  private readonly latestEpochPerPage = new Map<string, number>();
+  private readonly latestTileEpochPerPage = new Map<string, number>();
+
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   public static getActivePanel(uri?: vscode.Uri): vscode.WebviewPanel | undefined {
@@ -134,12 +138,24 @@ export class PDFEditorProvider implements vscode.CustomReadonlyEditorProvider {
           }
 
           case 'renderPage': {
+            const pageIndex = msg.pageIndex;
+            const epoch = msg.epoch ?? 0;
+            const pageKey = `${filePath}:${pageIndex}`;
+            this.latestEpochPerPage.set(pageKey, epoch);
+
             const quality = config.get<number>('webpQuality', 80);
-            const render = await PDFEngine.renderPage(filePath, msg.pageIndex, msg.scale, quality);
+            const render = await PDFEngine.renderPage(filePath, pageIndex, msg.scale, quality);
+
+            // If another zoom or render request arrived while this was rendering, abort immediately
+            if (this.latestEpochPerPage.get(pageKey) !== epoch) {
+              return;
+            }
+
             webviewPanel.webview.postMessage({
               type: 'pageReady',
               pageIndex: render.pageIndex,
               scale: render.scale,
+              epoch,
               dataUrl: render.dataUrl,
               width: render.width,
               height: render.height
@@ -149,18 +165,30 @@ export class PDFEditorProvider implements vscode.CustomReadonlyEditorProvider {
 
           // Seamless 1600% Zoom Tile Renderer
           case 'renderTile': {
+            const pageIndex = msg.pageIndex;
+            const epoch = msg.epoch ?? 0;
+            const tileKey = `${filePath}:${pageIndex}`;
+            this.latestTileEpochPerPage.set(tileKey, epoch);
+
             const quality = config.get<number>('webpQuality', 80);
             const render = await PDFEngine.renderTile(
               filePath,
-              msg.pageIndex,
+              pageIndex,
               msg.scale,
               msg.tile,
               quality
             );
+
+            // If superseded by a newer zoom/pan while rendering, abort
+            if (this.latestTileEpochPerPage.get(tileKey) !== epoch) {
+              return;
+            }
+
             webviewPanel.webview.postMessage({
               type: 'tileReady',
               pageIndex: render.pageIndex,
               scale: render.scale,
+              epoch,
               tile: render.tile,
               dataUrl: render.dataUrl,
               width: render.width,
