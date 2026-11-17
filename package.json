@@ -1,0 +1,202 @@
+{
+  "name": "remote-ssh-pdf-viewer",
+  "displayName": "Remote SSH PDF Viewer",
+  "description": "High-performance PDF viewer for Remote SSH & heavy LaTeX/Typst workflows with server-side WebP streaming and seamless 1600% zoom.",
+  "version": "1.0.0",
+  "publisher": "antigravity",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/remote-ssh-pdf-viewer/remote-ssh-pdf-viewer"
+  },
+  "icon": "assets/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "pdf",
+    "remote ssh",
+    "webp",
+    "latex",
+    "synctex",
+    "typst",
+    "fast",
+    "viewer",
+    "server-side"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onCustomEditor:remotePdfViewer.viewer",
+    "onCommand:remotePdfViewer.openPreview",
+    "onCommand:remotePdfViewer.openPreviewToTheSide",
+    "onCommand:remotePdfViewer.synctexForward",
+    "onCommand:remotePdfViewer.refresh"
+  ],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "remotePdfViewer.viewer",
+        "displayName": "Remote PDF Viewer (WebP)",
+        "selector": [
+          {
+            "filenamePattern": "*.pdf"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "remotePdfViewer.openPreview",
+        "title": "Remote PDF: Open Preview",
+        "category": "PDF"
+      },
+      {
+        "command": "remotePdfViewer.openPreviewToTheSide",
+        "title": "Remote PDF: Open Preview to the Side",
+        "category": "PDF"
+      },
+      {
+        "command": "remotePdfViewer.synctexForward",
+        "title": "Remote PDF: Jump to PDF Location (SyncTeX)",
+        "category": "PDF"
+      },
+      {
+        "command": "remotePdfViewer.refresh",
+        "title": "Remote PDF: Reload Document",
+        "category": "PDF"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "remotePdfViewer.openPreviewToTheSide",
+          "when": "resourceExtname == .pdf",
+          "group": "navigation"
+        },
+        {
+          "command": "remotePdfViewer.refresh",
+          "when": "activeCustomEditorId == remotePdfViewer.viewer",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "remotePdfViewer.openPreview",
+          "when": "resourceExtname == .pdf",
+          "group": "navigation"
+        },
+        {
+          "command": "remotePdfViewer.openPreviewToTheSide",
+          "when": "resourceExtname == .pdf",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "remotePdfViewer.openPreview"
+        },
+        {
+          "command": "remotePdfViewer.openPreviewToTheSide"
+        },
+        {
+          "command": "remotePdfViewer.synctexForward",
+          "when": "resourceExtname =~ /\\.(tex|latex)$/"
+        },
+        {
+          "command": "remotePdfViewer.refresh",
+          "when": "activeCustomEditorId == remotePdfViewer.viewer"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Remote SSH PDF Viewer",
+      "properties": {
+        "remotePdfViewer.webpQuality": {
+          "type": "integer",
+          "default": 80,
+          "minimum": 20,
+          "maximum": 100,
+          "description": "Quality for server-side WebP compression (20-100). Higher values give slightly clearer images at cost of slightly larger transfer size."
+        },
+        "remotePdfViewer.defaultZoom": {
+          "type": "string",
+          "default": "fit-width",
+          "enum": [
+            "fit-width",
+            "fit-page",
+            "auto",
+            "0.5",
+            "0.75",
+            "1.0",
+            "1.25",
+            "1.5",
+            "2.0"
+          ],
+          "enumDescriptions": [
+            "Fit page width to window",
+            "Fit whole page in window",
+            "Automatic best fit",
+            "50%",
+            "75%",
+            "100% (Actual size)",
+            "125%",
+            "150%",
+            "200%"
+          ],
+          "description": "Default initial zoom level when opening a PDF."
+        },
+        "remotePdfViewer.maxZoom": {
+          "type": "number",
+          "default": 1600,
+          "minimum": 200,
+          "maximum": 3200,
+          "description": "Maximum zoom level percentage (e.g. 1600 for 1600% zoom)."
+        },
+        "remotePdfViewer.autoReload": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically reload the PDF when modified on disk (ideal for latexmk/pdflatex/typst watch)."
+        },
+        "remotePdfViewer.autoReloadDelay": {
+          "type": "integer",
+          "default": 200,
+          "minimum": 50,
+          "maximum": 2000,
+          "description": "Debounce delay in milliseconds before reloading after a disk modification."
+        },
+        "remotePdfViewer.invertColorsInDarkMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Invert PDF colors in dark mode for high-contrast reading."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "node esbuild.mjs --production",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test": "node --test test/**/*.test.mjs",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "dependencies": {
+    "@jsquash/webp": "^1.5.0",
+    "mupdf": "^1.28.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.9",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  }
+}
