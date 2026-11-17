@@ -30,7 +30,8 @@
     "server-side"
   ],
   "extensionKind": [
-    "workspace"
+    "workspace",
+    "ui"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
