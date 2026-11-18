@@ -3,14 +3,18 @@ import assert from 'node:assert/strict';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 
+import { fileURLToPath } from 'node:url';
+
 // Import compiled dist/extension or modules directly
 import { PDFEngine } from '../dist/pdfEngine.js';
 import { LRUCache } from '../dist/cache.js';
 import { forwardSearch, reverseSearch, getSyncTeXData } from '../dist/synctex.js';
 import { encodeToWebp, toDataUrl } from '../dist/webpEncoder.js';
 
-const SAMPLE_PDF = '/home/nothing/Documents/Code-Config/Coding/Rule30/formulas.pdf';
-const SAMPLE_TEX = '/home/nothing/Documents/Code-Config/Coding/Rule30/formulas.tex';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const SAMPLE_PDF = path.join(__dirname, 'fixtures', 'formulas.pdf');
+const SAMPLE_TEX = path.join(__dirname, 'fixtures', 'formulas.tex');
 
 test('LRUCache operations', () => {
   const cache = new LRUCache(3);

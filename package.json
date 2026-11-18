@@ -183,9 +183,10 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "node esbuild.mjs --production",
-    "build": "node esbuild.mjs",
+    "vscode:prepublish": "tsc && node esbuild.mjs --production",
+    "build": "tsc && node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
+    "pretest": "npm run build",
     "test": "node --test",
     "package": "vsce package --allow-missing-repository"
   },
