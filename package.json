@@ -186,7 +186,7 @@
     "vscode:prepublish": "node esbuild.mjs --production",
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
-    "test": "node --test test/**/*.test.mjs",
+    "test": "node --test",
     "package": "vsce package --allow-missing-repository"
   },
   "dependencies": {
