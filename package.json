@@ -3,11 +3,11 @@
   "displayName": "Remote SSH PDF Viewer",
   "description": "High-performance PDF viewer for Remote SSH & heavy LaTeX/Typst workflows with server-side WebP streaming and seamless 1600% zoom.",
   "version": "1.0.0",
-  "publisher": "antigravity",
+  "publisher": "stymbhrdwj",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/remote-ssh-pdf-viewer/remote-ssh-pdf-viewer"
+    "url": "https://github.com/stymbhrdwj/remote_viewing"
   },
   "icon": "assets/icon.png",
   "engines": {
