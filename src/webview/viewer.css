@@ -395,7 +395,7 @@ body {
   image-rendering: auto;
 }
 
-/* Seamless 5000% Zoom Tile Layer */
+/* Seamless 10,000% Zoom Tile Layer */
 .tile-layer {
   position: absolute;
   top: 0;

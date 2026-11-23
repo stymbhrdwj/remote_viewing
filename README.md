@@ -3,11 +3,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Zero-Sudo](https://img.shields.io/badge/Dependencies-0%20Sudo%20%7C%20Zero--Config-brightgreen.svg)]()
 [![WebP Streaming](https://img.shields.io/badge/Streaming-WebAssembly%20WebP-orange.svg)]()
-[![Zoom](https://img.shields.io/badge/Zoom-Seamless%205000%25-purple.svg)]()
+[![Zoom](https://img.shields.io/badge/Zoom-Seamless%2010%2C000%25-purple.svg)]()
 
 A high-performance, self-contained VS Code PDF viewer specifically engineered for **Remote SSH**, **Dev Containers**, and heavy **LaTeX / Typst** editing workflows.
 
-Renders PDF pages directly on the remote server using high-speed WebAssembly, streaming ultra-lightweight **WebP images (typically 20KB–80KB)** to the local VS Code window. Experience zero-latency scrolling, instant live compilation reloads, and **seamless 5000% zoom** without downloading multi-megabyte PDFs over SSH.
+Renders PDF pages directly on the remote server using high-speed WebAssembly, streaming ultra-lightweight **WebP images (typically 20KB–80KB)** to the local VS Code window. Experience zero-latency scrolling, instant live compilation reloads, and **seamless 10,000% zoom** without downloading multi-megabyte PDFs over SSH.
 
 ---
 
@@ -21,7 +21,7 @@ When editing complex documents, papers, or textbooks over Remote SSH:
 **Remote SSH PDF Viewer solves all of these:**
 - **Zero Sudo / Zero System Dependencies**: 100% self-contained in a single `.vsix` package. Powered by MuPDF WebAssembly and Google Squoosh WebP WebAssembly. Runs on standard Node.js on Linux (x64, ARM64), macOS, and Windows.
 - **WebP Streaming**: Only the compressed view (20KB–80KB) travels through the SSH connection.
-- **Seamless 5000% Zoom**: Uses an adaptive sub-viewport tile engine at high magnifications (250%–5000%). Only the visible screen region is rendered at subpixel precision in ~60ms, keeping memory tiny and math equations tack-sharp.
+- **Seamless 10,000% Zoom**: Uses an adaptive sub-viewport tile engine at high magnifications (250%–10,000%). Only the visible screen region is rendered at subpixel precision in ~60ms, keeping memory tiny and math equations tack-sharp.
 - **Live Reload for LaTeX / Typst**: Listens to file changes from `latexmk`, `pdflatex`, or `typst watch` with intelligent write-lock debouncing. Updates instantly without losing your scroll position or zoom level.
 - **Full SyncTeX Integration**:
   - **Inverse Search**: Double-click (or Ctrl+click) any equation or text in the PDF to jump directly to the exact line in your `.tex` source file.
@@ -54,11 +54,11 @@ When editing complex documents, papers, or textbooks over Remote SSH:
 | LOCAL CLIENT (VS Code Webview)                    v                             |
 |                                                                                 |
 |  +---------------------------------------------------------------------------+  |
-|  | Modern VS Code Toolbar (Page Nav, Continuous/Single, 5000% Zoom, Search)  |  |
+|  | Modern VS Code Toolbar (Page Nav, Continuous/Single, 10,000% Zoom, Search)  |  |
 |  +---------------------------------------------------------------------------+  |
 |  | [Sidebar]        | [Continuous Scroll Viewport]                           |  |
 |  | - Thumbnails     |   - Base WebP Layer (Hardware Accelerated)             |  |
-|  | - Outline Tree   |   - High-Res 5000% Viewport Tile Overlay               |  |
+|  | - Outline Tree   |   - High-Res 10,000% Viewport Tile Overlay             |  |
 |  |                  |   - Transparent Selectable Text Layer (Copy/Paste)     |  |
 |  |                  |   - Golden Search Highlight Boxes                      |  |
 |  |                  |   - SyncTeX Pulsing Target Ring                        |  |
@@ -70,9 +70,9 @@ When editing complex documents, papers, or textbooks over Remote SSH:
 
 ## Features in Detail
 
-### 1. Seamless 5000% Zoom
-Zoom smoothly from **25% to 5000%** using:
-- Dropdown presets: `Fit Width`, `Fit Page`, `Automatic`, `25%`, `50%`, `75%`, `100%`, `125%`, `150%`, `200%`, `300%`, `400%`, `600%`, `800%`, `1200%`, `1600%`, `2500%`, `3500%`, `5000% (Ultra Res)`.
+### 1. Seamless 10,000% Zoom
+Zoom smoothly from **25% to 10,000%** using:
+- Dropdown presets: `Fit Width`, `Fit Page`, `Automatic`, `25%`, `50%`, `75%`, `100%`, `125%`, `150%`, `200%`, `300%`, `400%`, `600%`, `800%`, `1200%`, `1600%`, `2500%`, `3500%`, `5000%`, `7500%`, `10000% (Ultra Res)`.
 - `+` and `-` toolbar buttons.
 - `Ctrl + MouseWheel` or trackpad pinch zoom.
 - `Space + Drag` or `Middle-Click Drag` to smoothly pan across high-zoom details.
@@ -126,7 +126,7 @@ When running `latexmk -pvc`, `pdflatex`, `tectonic`, or `typst watch`:
 | :--- | :--- | :--- | :--- |
 | `remotePdfViewer.webpQuality` | `number` | `80` | Server-side WebP compression quality (20–100). |
 | `remotePdfViewer.defaultZoom` | `string` | `"fit-width"` | Initial zoom mode (`fit-width`, `fit-page`, `auto`, `1.0`, etc.). |
-| `remotePdfViewer.maxZoom` | `number` | `5000` | Maximum zoom percentage. |
+| `remotePdfViewer.maxZoom` | `number` | `10000` | Maximum zoom percentage. |
 | `remotePdfViewer.autoReload` | `boolean` | `true` | Automatically reload when PDF is recompiled on disk. |
 | `remotePdfViewer.autoReloadDelay` | `number` | `200` | Debounce delay in milliseconds before reloading after file write. |
 | `remotePdfViewer.invertColorsInDarkMode` | `boolean` | `false` | Inverts PDF colors in dark mode for high-contrast reading. |
@@ -149,8 +149,8 @@ When running `latexmk -pvc`, `pdflatex`, `tectonic`, or `typst watch`:
 - `Ctrl +` / `Cmd +`: Zoom In
 - `Ctrl -` / `Cmd -`: Zoom Out
 - `Ctrl 0` / `Cmd 0`: Fit Width
-- `Ctrl + MouseWheel`: Smooth continuous zoom centered on cursor (up to 5000%)
-- `Space + Drag` / `Middle-Click Drag`: Smooth pan across page (especially at 5000% zoom)
+- `Ctrl + MouseWheel`: Smooth continuous zoom centered on cursor (up to 10,000%)
+- `Space + Drag` / `Middle-Click Drag`: Smooth pan across page (especially at 10,000% zoom)
 - `Ctrl + F`: Open Find / Search bar
 - `Escape`: Close Search bar
 - `r`: Rotate 90° clockwise

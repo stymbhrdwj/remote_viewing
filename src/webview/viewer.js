@@ -90,7 +90,7 @@
           const delta = -e.deltaY;
           const factor = delta > 0 ? 1.15 : 0.87;
           let newScale = currentScale * factor;
-          newScale = Math.max(0.25, Math.min(50.0, newScale));
+          newScale = Math.max(0.25, Math.min(100.0, newScale));
           // Apply instant visual scaling to DOM elements, deferring server requests until wheel pauses
           applyCustomScale(newScale, e.clientX, e.clientY, false);
 
@@ -726,11 +726,11 @@
     });
   }
 
-  // --- Seamless 5000% Zoom Engine ---
+  // --- Seamless 10,000% Zoom Engine ---
   const MIN_SCALE = 0.25;
-  const MAX_SCALE = 50.0;
+  const MAX_SCALE = 100.0;
   const PRESET_SCALES = [
-    0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 20.0, 25.0, 35.0, 50.0
+    0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 20.0, 25.0, 35.0, 50.0, 75.0, 100.0
   ];
 
   function zoomStep(direction) {
