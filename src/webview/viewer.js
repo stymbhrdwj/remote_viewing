@@ -90,7 +90,7 @@
           const delta = -e.deltaY;
           const factor = delta > 0 ? 1.15 : 0.87;
           let newScale = currentScale * factor;
-          newScale = Math.max(0.25, Math.min(16.0, newScale));
+          newScale = Math.max(0.25, Math.min(50.0, newScale));
           // Apply instant visual scaling to DOM elements, deferring server requests until wheel pauses
           applyCustomScale(newScale, e.clientX, e.clientY, false);
 
@@ -102,6 +102,56 @@
       },
       { passive: false }
     );
+
+    // Smooth drag-to-pan (Space + Left Click or Middle Click) for high zoom navigation (up to 5000%)
+    let isPanning = false;
+    let panStartX = 0;
+    let panStartY = 0;
+    let panScrollLeft = 0;
+    let panScrollTop = 0;
+    let isSpacePressed = false;
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && !e.target.matches('input, textarea, select')) {
+        isSpacePressed = true;
+        if (!isPanning) viewerContainer.style.cursor = 'grab';
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') {
+        isSpacePressed = false;
+        if (!isPanning) viewerContainer.style.cursor = 'default';
+      }
+    });
+
+    viewerContainer.addEventListener('mousedown', (e) => {
+      if (e.button === 1 || (e.button === 0 && isSpacePressed)) {
+        e.preventDefault();
+        isPanning = true;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        panScrollLeft = viewerContainer.scrollLeft;
+        panScrollTop = viewerContainer.scrollTop;
+        viewerContainer.style.cursor = 'grabbing';
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isPanning) return;
+      e.preventDefault();
+      const dx = e.clientX - panStartX;
+      const dy = e.clientY - panStartY;
+      viewerContainer.scrollLeft = panScrollLeft - dx;
+      viewerContainer.scrollTop = panScrollTop - dy;
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (isPanning) {
+        isPanning = false;
+        viewerContainer.style.cursor = isSpacePressed ? 'grab' : 'default';
+      }
+    });
 
     // Rotate
     rotateBtn.addEventListener('click', () => {
@@ -449,7 +499,7 @@
     img.style.width = `${tile.width * currentScale}px`;
     img.style.height = `${tile.height * currentScale}px`;
 
-    while (tileLayer.children.length > 2) {
+    while (tileLayer.children.length > 4) {
       tileLayer.removeChild(tileLayer.firstChild);
     }
 
@@ -676,21 +726,25 @@
     });
   }
 
-  // --- Seamless 1600% Zoom Engine ---
+  // --- Seamless 5000% Zoom Engine ---
+  const MIN_SCALE = 0.25;
+  const MAX_SCALE = 50.0;
+  const PRESET_SCALES = [
+    0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 20.0, 25.0, 35.0, 50.0
+  ];
 
   function zoomStep(direction) {
-    const presetScales = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0];
     let nextScale;
     if (direction > 0) {
-      nextScale = presetScales.find((s) => s > currentScale + 0.05) || 16.0;
+      nextScale = PRESET_SCALES.find((s) => s > currentScale + 0.05) || MAX_SCALE;
     } else {
-      for (let i = presetScales.length - 1; i >= 0; i--) {
-        if (presetScales[i] < currentScale - 0.05) {
-          nextScale = presetScales[i];
+      for (let i = PRESET_SCALES.length - 1; i >= 0; i--) {
+        if (PRESET_SCALES[i] < currentScale - 0.05) {
+          nextScale = PRESET_SCALES[i];
           break;
         }
       }
-      if (!nextScale) nextScale = 0.25;
+      if (!nextScale) nextScale = MIN_SCALE;
     }
     applyCustomScale(nextScale);
   }
@@ -730,13 +784,13 @@
       targetScale = Math.min(viewportWidth / dim.width, 1.5);
     }
 
-    targetScale = Math.max(0.25, Math.min(16.0, targetScale));
+    targetScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, targetScale));
     applyCustomScale(targetScale);
   }
 
   function applyCustomScale(newScale, focalX, focalY, immediateRequest = true) {
     const prevScale = currentScale;
-    currentScale = Math.max(0.25, Math.min(16.0, newScale));
+    currentScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
     currentRenderEpoch++; // Invalidate all older in-flight render requests immediately
 
     const pct = Math.round(currentScale * 100);

@@ -1,8 +1,8 @@
 {
   "name": "remote-ssh-pdf-viewer",
   "displayName": "Remote SSH PDF Viewer",
-  "description": "High-performance PDF viewer for Remote SSH & heavy LaTeX/Typst workflows with server-side WebP streaming and seamless 1600% zoom.",
-  "version": "1.0.0",
+  "description": "High-performance PDF viewer for Remote SSH & heavy LaTeX/Typst workflows with server-side WebP streaming and seamless 5000% zoom.",
+  "version": "1.1.0",
   "publisher": "stymbhrdwj",
   "license": "MIT",
   "repository": {
@@ -157,10 +157,10 @@
         },
         "remotePdfViewer.maxZoom": {
           "type": "number",
-          "default": 1600,
+          "default": 5000,
           "minimum": 200,
-          "maximum": 3200,
-          "description": "Maximum zoom level percentage (e.g. 1600 for 1600% zoom)."
+          "maximum": 10000,
+          "description": "Maximum zoom level percentage (e.g. 5000 for 5000% zoom)."
         },
         "remotePdfViewer.autoReload": {
           "type": "boolean",

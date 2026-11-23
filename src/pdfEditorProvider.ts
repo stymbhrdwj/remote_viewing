@@ -163,7 +163,7 @@ export class PDFEditorProvider implements vscode.CustomReadonlyEditorProvider {
             break;
           }
 
-          // Seamless 1600% Zoom Tile Renderer
+          // Seamless 5000% Zoom Tile Renderer
           case 'renderTile': {
             const pageIndex = msg.pageIndex;
             const epoch = msg.epoch ?? 0;

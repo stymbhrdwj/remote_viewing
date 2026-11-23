@@ -192,9 +192,9 @@ export class PDFEngine {
   }
 
   /**
-   * Seamless 1600% Zoom Tile Renderer:
+   * Seamless 5000% Zoom Tile Renderer:
    * Renders only the requested sub-viewport rect at the given scale to WebP.
-   * Runs in ~50-80ms and uses negligible memory compared to full-page rendering at 16x zoom.
+   * Runs in ~50-80ms and uses negligible memory compared to full-page rendering at 50x zoom.
    */
   public static async renderTile(
     filePath: string,

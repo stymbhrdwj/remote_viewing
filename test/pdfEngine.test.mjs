@@ -110,6 +110,28 @@ test('PDFEngine: renderTile (Seamless 1600% Zoom)', async () => {
   assert.ok(elapsed < 1500, `1600% tile render took ${elapsed}ms`);
 });
 
+test('PDFEngine: renderTile (Seamless 5000% Zoom)', async () => {
+  // Render a viewport tile at 50x zoom (5000%)
+  const scale = 50.0;
+  const tile = {
+    x: 200,
+    y: 130,
+    width: 20,  // 20 pt * 50 = 1000 px
+    height: 16  // 16 pt * 50 = 800 px
+  };
+
+  const t0 = Date.now();
+  const tileResult = await PDFEngine.renderTile(SAMPLE_PDF, 0, scale, tile, 80);
+  const elapsed = Date.now() - t0;
+
+  assert.equal(tileResult.pageIndex, 0);
+  assert.equal(tileResult.scale, 50.0);
+  assert.equal(tileResult.width, 1000);
+  assert.equal(tileResult.height, 800);
+  assert.ok(tileResult.dataUrl.startsWith('data:image/webp;base64,'));
+  assert.ok(elapsed < 1500, `5000% tile render took ${elapsed}ms`);
+});
+
 test('PDFEngine: extractText with bounding boxes', async () => {
   const spans = await PDFEngine.extractText(SAMPLE_PDF, 0);
   assert.ok(spans.length > 0);

@@ -111,7 +111,10 @@ ${cssContent}
         <option value="6">600%</option>
         <option value="8">800%</option>
         <option value="12">1200%</option>
-        <option value="16">1600% (High Res)</option>
+        <option value="16">1600%</option>
+        <option value="25">2500%</option>
+        <option value="35">3500%</option>
+        <option value="50">5000% (Ultra Res)</option>
       </select>
       <button class="tool-button" id="zoomInBtn" title="Zoom In (Ctrl +)">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
