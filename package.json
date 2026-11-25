@@ -2,7 +2,7 @@
   "name": "remote-ssh-pdf-viewer",
   "displayName": "Remote SSH PDF Viewer",
   "description": "High-performance PDF viewer for Remote SSH & heavy LaTeX/Typst workflows with server-side WebP streaming and seamless 10,000% zoom.",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "publisher": "stymbhrdwj",
   "license": "MIT",
   "repository": {

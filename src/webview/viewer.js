@@ -17,6 +17,13 @@
   let tileRequestDebounce = null;
   let currentRenderEpoch = 0;
 
+  // Zoom Engine Constants
+  const MIN_SCALE = 0.25;
+  const MAX_SCALE = 100.0;
+  const PRESET_SCALES = [
+    0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 20.0, 25.0, 35.0, 50.0, 75.0, 100.0
+  ];
+
   // Cache & in-flight tracking
   const pageLoadedScale = new Map(); // pageNum -> scale
   const pageInFlight = new Set();    // pageNum
@@ -80,18 +87,24 @@
     zoomInBtn.addEventListener('click', () => zoomStep(1));
     zoomOutBtn.addEventListener('click', () => zoomStep(-1));
 
-    // Mouse wheel zoom with Ctrl/Cmd (debounced server requests for 60fps smooth zooming)
+    // Mouse wheel & trackpad pinch zoom with Ctrl/Cmd (debounced server requests for 60fps smooth zooming)
     let wheelZoomDebounce = null;
     viewerContainer.addEventListener(
       'wheel',
       (e) => {
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
-          const delta = -e.deltaY;
-          const factor = delta > 0 ? 1.15 : 0.87;
+          let factor;
+          if (Math.abs(e.deltaY) > 40) {
+            // Standard discrete mouse wheel notch
+            factor = e.deltaY < 0 ? 1.15 : 0.87;
+          } else {
+            // Smooth continuous trackpad pinch
+            factor = Math.max(0.85, Math.min(1.15, 1 - e.deltaY * 0.01));
+          }
           let newScale = currentScale * factor;
-          newScale = Math.max(0.25, Math.min(100.0, newScale));
-          // Apply instant visual scaling to DOM elements, deferring server requests until wheel pauses
+          newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+          // Instant visual scaling anchored to cursor coordinates (e.clientX, e.clientY)
           applyCustomScale(newScale, e.clientX, e.clientY, false);
 
           if (wheelZoomDebounce) clearTimeout(wheelZoomDebounce);
@@ -727,11 +740,6 @@
   }
 
   // --- Seamless 10,000% Zoom Engine ---
-  const MIN_SCALE = 0.25;
-  const MAX_SCALE = 100.0;
-  const PRESET_SCALES = [
-    0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 20.0, 25.0, 35.0, 50.0, 75.0, 100.0
-  ];
 
   function zoomStep(direction) {
     let nextScale;
@@ -790,14 +798,19 @@
 
   function applyCustomScale(newScale, focalX, focalY, immediateRequest = true) {
     const prevScale = currentScale;
-    currentScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+    const clampedScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+    if (Math.abs(clampedScale - prevScale) < 0.0001) return;
+
+    currentScale = clampedScale;
     currentRenderEpoch++; // Invalidate all older in-flight render requests immediately
 
     const pct = Math.round(currentScale * 100);
     const existingOpt = Array.from(zoomSelect.options).find((o) => o.value === `${currentScale}`);
     if (existingOpt) {
       zoomSelect.value = `${currentScale}`;
+      zoomMode = `${currentScale}`;
     } else {
+      zoomMode = 'custom';
       zoomSelect.value = 'custom';
       let customOpt = zoomSelect.querySelector('option[value="custom"]');
       if (!customOpt) {
@@ -809,22 +822,60 @@
       zoomSelect.value = 'custom';
     }
 
-    if (focalX !== undefined && focalY !== undefined) {
-      const containerRect = viewerContainer.getBoundingClientRect();
-      const mouseX = focalX - containerRect.left + viewerContainer.scrollLeft;
-      const mouseY = focalY - containerRect.top + viewerContainer.scrollTop;
-      const ratio = currentScale / prevScale;
-      viewerContainer.scrollLeft = mouseX * ratio - (focalX - containerRect.left);
-      viewerContainer.scrollTop = mouseY * ratio - (focalY - containerRect.top);
-    } else {
-      const centerX = viewerContainer.clientWidth / 2 + viewerContainer.scrollLeft;
-      const centerY = viewerContainer.clientHeight / 2 + viewerContainer.scrollTop;
-      const ratio = currentScale / prevScale;
-      viewerContainer.scrollLeft = centerX * ratio - viewerContainer.clientWidth / 2;
-      viewerContainer.scrollTop = centerY * ratio - viewerContainer.clientHeight / 2;
+    // Determine the focal point in screen viewport coordinates
+    const containerRect = viewerContainer.getBoundingClientRect();
+    let fx = focalX;
+    let fy = focalY;
+    if (fx === undefined || fy === undefined) {
+      fx = containerRect.left + containerRect.width / 2;
+      fy = containerRect.top + containerRect.height / 2;
     }
 
+    // Identify the anchor page under the focal point (or fall back to currentPage)
+    let anchorPageEl = null;
+    if (viewMode === 'single') {
+      anchorPageEl = document.getElementById(`page-${currentPage}`);
+    } else {
+      const elUnder = document.elementFromPoint(fx, fy);
+      if (elUnder) {
+        anchorPageEl = elUnder.closest('.page-container');
+      }
+      if (!anchorPageEl) {
+        anchorPageEl = document.getElementById(`page-${currentPage}`) || document.querySelector('.page-container');
+      }
+    }
+
+    // Record the anchor point's relative unscaled position (PDF points) on that page
+    let anchorRelX = 0;
+    let anchorRelY = 0;
+    let hadAnchor = false;
+    if (anchorPageEl) {
+      const anchorRect = anchorPageEl.getBoundingClientRect();
+      anchorRelX = (fx - anchorRect.left) / prevScale;
+      anchorRelY = (fy - anchorRect.top) / prevScale;
+      hadAnchor = true;
+    }
+
+    // 1. UPDATE DOM DIMENSIONS FIRST so scrollWidth/scrollHeight expand before scroll adjustments
     updateContainerDimensions();
+
+    // 2. ADJUST SCROLL POSITION so the exact anchor point stays under (fx, fy)
+    if (hadAnchor && anchorPageEl) {
+      const newAnchorRect = anchorPageEl.getBoundingClientRect();
+      const newScreenX = newAnchorRect.left + anchorRelX * currentScale;
+      const newScreenY = newAnchorRect.top + anchorRelY * currentScale;
+
+      viewerContainer.scrollLeft += (newScreenX - fx);
+      viewerContainer.scrollTop += (newScreenY - fy);
+
+      // Keep currentPage synchronized with the page being zoomed
+      const pNum = parseInt(anchorPageEl.getAttribute('data-page'), 10);
+      if (pNum && !isNaN(pNum) && pNum !== currentPage) {
+        currentPage = pNum;
+        pageInput.value = currentPage;
+        updateActiveThumbnail(currentPage);
+      }
+    }
 
     if (immediateRequest) {
       requestVisiblePages(true);
@@ -874,20 +925,28 @@
     if (viewMode === 'single') return;
 
     const containerRect = viewerContainer.getBoundingClientRect();
-    const centerY = containerRect.top + containerRect.height / 3;
+    let maxVisibleHeight = 0;
+    let bestPage = currentPage;
 
     for (let i = 1; i <= pageCount; i++) {
       const el = document.getElementById(`page-${i}`);
       if (!el) continue;
       const rect = el.getBoundingClientRect();
-      if (rect.top <= centerY && rect.bottom >= centerY) {
-        if (currentPage !== i) {
-          currentPage = i;
-          pageInput.value = currentPage;
-          updateActiveThumbnail(currentPage);
-        }
-        break;
+
+      const visibleTop = Math.max(containerRect.top, rect.top);
+      const visibleBottom = Math.min(containerRect.bottom, rect.bottom);
+      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+
+      if (visibleHeight > maxVisibleHeight) {
+        maxVisibleHeight = visibleHeight;
+        bestPage = i;
       }
+    }
+
+    if (bestPage !== currentPage && maxVisibleHeight > 0) {
+      currentPage = bestPage;
+      pageInput.value = currentPage;
+      updateActiveThumbnail(currentPage);
     }
   }
 
